@@ -1,5 +1,6 @@
 import { inngest } from "../inngest/client.js";
 import Ticket from "../models/ticket.js";
+import { demoTickets, isDemoStoreEnabled } from "../utils/demoStore.js";
 
 export const createTicket = async (req, res) => {
   try {
@@ -9,6 +10,19 @@ export const createTicket = async (req, res) => {
       return res
         .status(400)
         .json({ message: "Title and description are required" });
+    }
+
+    if (isDemoStoreEnabled()) {
+      const newTicket = demoTickets.create({
+        title,
+        description,
+        createdBy: req.user._id,
+      });
+
+      return res.status(201).json({
+        message: "Ticket created in demo mode",
+        ticket: newTicket,
+      });
     }
 
     const newTicket = await Ticket.create({
@@ -46,6 +60,10 @@ export const getTickets = async (req, res) => {
     const user = req.user;
     let tickets;
 
+    if (isDemoStoreEnabled()) {
+      return res.status(200).json(demoTickets.listForUser(user));
+    }
+
     if (user.role !== "user") {
       tickets = await Ticket.find({})
         .populate("assignedTo", ["email", "_id"])
@@ -67,6 +85,16 @@ export const getTicket = async (req, res) => {
   try {
     const user = req.user;
     let ticket;
+
+    if (isDemoStoreEnabled()) {
+      ticket = demoTickets.findForUser(req.params.id, user);
+
+      if (!ticket) {
+        return res.status(404).json({ message: "Ticket not found" });
+      }
+
+      return res.status(200).json({ ticket });
+    }
 
     if (user.role !== "user") {
       ticket = await Ticket.findById(req.params.id).populate("assignedTo", [
