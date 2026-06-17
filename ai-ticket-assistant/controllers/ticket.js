@@ -1,5 +1,5 @@
-import { inngest } from "../inngest/client.js";
 import Ticket from "../models/ticket.js";
+import { processTicket } from "../services/processTicket.js";
 import { demoTickets, isDemoStoreEnabled } from "../utils/demoStore.js";
 
 export const createTicket = async (req, res) => {
@@ -31,19 +31,9 @@ export const createTicket = async (req, res) => {
       createdBy: req.user._id,
     });
 
-    try {
-      await inngest.send({
-        name: "ticket/created",
-        data: {
-          ticketId: newTicket._id.toString(),
-          title,
-          description,
-          createdBy: req.user._id.toString(),
-        },
-      });
-    } catch (inngestError) {
-      console.warn("⚠️ Failed to publish ticket event:", inngestError.message);
-    }
+    processTicket(newTicket._id).catch((error) => {
+      console.error("Ticket analysis failed:", error.message);
+    });
 
     return res.status(201).json({
       message: "Ticket created and processing started",
