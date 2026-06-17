@@ -2,6 +2,16 @@ import Ticket from "../models/ticket.js";
 import { processTicket } from "../services/processTicket.js";
 import { demoTickets, isDemoStoreEnabled } from "../utils/demoStore.js";
 
+const queueAnalysisIfPending = (ticket) => {
+  if (!ticket || (ticket.priority && ticket.helpfulNotes)) {
+    return;
+  }
+
+  processTicket(ticket._id).catch((error) => {
+    console.error("Ticket analysis failed:", error.message);
+  });
+};
+
 export const createTicket = async (req, res) => {
   try {
     const { title, description } = req.body;
@@ -31,9 +41,7 @@ export const createTicket = async (req, res) => {
       createdBy: req.user._id,
     });
 
-    processTicket(newTicket._id).catch((error) => {
-      console.error("Ticket analysis failed:", error.message);
-    });
+    queueAnalysisIfPending(newTicket);
 
     return res.status(201).json({
       message: "Ticket created and processing started",
@@ -95,12 +103,16 @@ export const getTicket = async (req, res) => {
       ticket = await Ticket.findOne({
         createdBy: user._id,
         _id: req.params.id,
-      }).select("title description status createdAt");
+      }).select(
+        "title description status createdAt priority helpfulNotes relatedSkills assignedTo"
+      );
     }
 
     if (!ticket) {
       return res.status(404).json({ message: "Ticket not found" });
     }
+
+    queueAnalysisIfPending(ticket);
 
     return res.status(200).json({ ticket });
   } catch (error) {
