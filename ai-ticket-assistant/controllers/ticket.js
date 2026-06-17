@@ -2,8 +2,16 @@ import Ticket from "../models/ticket.js";
 import { processTicket } from "../services/processTicket.js";
 import { demoTickets, isDemoStoreEnabled } from "../utils/demoStore.js";
 
+const FALLBACK_ANALYSIS_PREFIX = "AI response was unavailable";
+
 const queueAnalysisIfPending = (ticket) => {
-  if (!ticket || (ticket.priority && ticket.helpfulNotes)) {
+  const helpfulNotes = ticket?.helpfulNotes || "";
+  const hasRealAnalysis =
+    ticket?.priority &&
+    helpfulNotes &&
+    !helpfulNotes.startsWith(FALLBACK_ANALYSIS_PREFIX);
+
+  if (!ticket || hasRealAnalysis) {
     return;
   }
 
