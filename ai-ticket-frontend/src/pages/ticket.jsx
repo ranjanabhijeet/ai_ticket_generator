@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
+import { API_BASE_URL } from "../lib/api.js";
 
 export default function TicketDetailsPage() {
   const { id } = useParams();
@@ -10,10 +11,12 @@ export default function TicketDetailsPage() {
   const token = localStorage.getItem("token");
 
   useEffect(() => {
+    let shouldPoll = true;
+
     const fetchTicket = async () => {
       try {
         const res = await fetch(
-          `${import.meta.env.VITE_SERVER_URL}/tickets/${id}`,
+          `${API_BASE_URL}/tickets/${id}`,
           {
             headers: {
               Authorization: `Bearer ${token}`,
@@ -23,6 +26,7 @@ export default function TicketDetailsPage() {
         const data = await res.json();
         if (res.ok) {
           setTicket(data.ticket);
+          return data.ticket;
         } else {
           alert(data.message || "Failed to fetch ticket");
         }
@@ -34,8 +38,26 @@ export default function TicketDetailsPage() {
       }
     };
 
-    fetchTicket();
-  }, [id]);
+    const pollTicket = async () => {
+      if (!shouldPoll) return;
+
+      const nextTicket = await fetchTicket();
+      if (!shouldPoll) return;
+
+      const analysisPending =
+        nextTicket && (!nextTicket.priority || !nextTicket.helpfulNotes);
+
+      if (analysisPending) {
+        setTimeout(pollTicket, 3000);
+      }
+    };
+
+    pollTicket();
+
+    return () => {
+      shouldPoll = false;
+    };
+  }, [id, token]);
 
   const getStatusClassName = (status) => {
     if (status === "IN_PROGRESS") {

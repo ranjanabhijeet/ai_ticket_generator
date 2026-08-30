@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { API_BASE_URL } from "../lib/api.js";
 
 export default function AdminPanel() {
   const [users, setUsers] = useState([]);
@@ -20,6 +21,33 @@ export default function AdminPanel() {
     return "status-pill status-todo";
   };
 
+  const fetchUsers = useCallback(async () => {
+    if (!currentUser || currentUser.role !== "admin") {
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/auth/users`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setUsers(data);
+        setFilteredUsers(data);
+      } else {
+        console.error(data.error);
+      }
+    } catch (err) {
+      console.error("Error fetching users", err);
+    }
+  }, [currentUser?.role, token]);
+
+  useEffect(() => {
+    fetchUsers();
+  }, [fetchUsers]);
+
   if (!currentUser || currentUser.role !== "admin") {
     return (
       <main className="container-app py-8">
@@ -36,29 +64,6 @@ export default function AdminPanel() {
     );
   }
 
-  useEffect(() => {
-    fetchUsers();
-  }, []);
-
-  const fetchUsers = async () => {
-    try {
-      const res = await fetch(`${import.meta.env.VITE_SERVER_URL}/auth/users`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setUsers(data);
-        setFilteredUsers(data);
-      } else {
-        console.error(data.error);
-      }
-    } catch (err) {
-      console.error("Error fetching users", err);
-    }
-  };
-
   const handleEditClick = (user) => {
     setEditingUser(user.email);
     setFormData({
@@ -70,7 +75,7 @@ export default function AdminPanel() {
   const handleUpdate = async () => {
     try {
       const res = await fetch(
-        `${import.meta.env.VITE_SERVER_URL}/auth/update-user`,
+        `${API_BASE_URL}/auth/update-user`,
         {
           method: "POST",
           headers: {

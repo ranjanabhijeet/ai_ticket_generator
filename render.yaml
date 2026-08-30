@@ -1,0 +1,38 @@
+services:
+  - type: web
+    name: ai-ticket-assistant-api
+    runtime: node
+    plan: free
+    rootDir: ai-ticket-assistant
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MONGO_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
+      - key: INNGEST_EVENT_KEY
+        sync: false
+      - key: INNGEST_SIGNING_KEY
+        sync: false
+      - key: MAILTRAP_SMTP_HOST
+        sync: false
+      - key: MAILTRAP_SMTP_PORT
+        sync: false
+      - key: MAILTRAP_SMTP_USER
+        sync: false
+      - key: MAILTRAP_SMTP_PASS
+        sync: false
+      - key: APP_URL
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: CORS_ORIGIN
+        sync: false
