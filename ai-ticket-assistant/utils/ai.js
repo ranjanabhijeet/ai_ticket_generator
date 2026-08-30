@@ -1,4 +1,4 @@
-const CANDIDATE_MODELS = ["gemini-2.5-flash", "gemini-2.0-flash"];
+const getGeminiModel = () => process.env.GEMINI_MODEL || "gemini-2.5-flash";
 const PRIORITY_HIGH_HINTS = [
   "production",
   "critical",
@@ -160,35 +160,34 @@ const analyzeTicket = async (ticket) => {
     return fallback;
   }
 
-  for (const modelName of CANDIDATE_MODELS) {
-    try {
-      const parsed = await callGemini({
-        apiKey: geminiApiKey,
-        modelName,
+  try {
+    const modelName = getGeminiModel();
+    const parsed = await callGemini({
+      apiKey: geminiApiKey,
+      modelName,
+      ticket,
+    });
+
+    if (parsed) {
+      return {
+        ...fallback,
+        ...parsed,
+        helpfulNotes: parsed.helpfulNotes || fallback.helpfulNotes,
+        relatedSkills:
+          parsed.relatedSkills && parsed.relatedSkills.length
+            ? parsed.relatedSkills
+            : fallback.relatedSkills,
+      };
+    }
+
+    console.warn(`⚠️ AI returned invalid JSON with model ${modelName}`);
+  } catch (e) {
+    console.warn(`⚠️ AI inference failed with model ${getGeminiModel()}: ${e.message}`);
+    if (isQuotaExceededError(e)) {
+      return buildFallbackAnalysis(
         ticket,
-      });
-
-      if (parsed) {
-        return {
-          ...fallback,
-          ...parsed,
-          helpfulNotes: parsed.helpfulNotes || fallback.helpfulNotes,
-          relatedSkills:
-            parsed.relatedSkills && parsed.relatedSkills.length
-              ? parsed.relatedSkills
-              : fallback.relatedSkills,
-        };
-      }
-
-      console.warn(`⚠️ AI returned invalid JSON with model ${modelName}`);
-    } catch (e) {
-      console.warn(`⚠️ AI inference failed with model ${modelName}: ${e.message}`);
-      if (isQuotaExceededError(e)) {
-        return buildFallbackAnalysis(
-          ticket,
-          "Gemini API quota was exceeded for the configured Google project"
-        );
-      }
+        "Gemini API quota was exceeded for the configured Google project"
+      );
     }
   }
 

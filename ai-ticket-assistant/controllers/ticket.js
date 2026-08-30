@@ -1,4 +1,5 @@
 import Ticket from "../models/ticket.js";
+import mongoose from "mongoose";
 import { processTicket } from "../services/processTicket.js";
 import analyzeTicket from "../utils/ai.js";
 import { demoTickets, isDemoStoreEnabled } from "../utils/demoStore.js";
@@ -8,6 +9,24 @@ const STALE_DEMO_ANALYSIS_PREFIX =
   "Demo mode is active because the production MongoDB connection is unavailable";
 const normalizePriority = (priority) =>
   ["low", "medium", "high"].includes(priority) ? priority : "medium";
+
+const ticketLookupForUser = (id, user) => {
+  const publicIdLookup = { ticketId: id };
+
+  if (mongoose.Types.ObjectId.isValid(id)) {
+    const objectIdLookup = { _id: id };
+    return user.role !== "user"
+      ? { $or: [objectIdLookup, publicIdLookup] }
+      : {
+          createdBy: user._id,
+          $or: [objectIdLookup, publicIdLookup],
+        };
+  }
+
+  return user.role !== "user"
+    ? publicIdLookup
+    : { createdBy: user._id, ...publicIdLookup };
+};
 
 const queueAnalysisIfPending = (ticket) => {
   const helpfulNotes = ticket?.helpfulNotes || "";
@@ -128,7 +147,7 @@ export const getTickets = async (req, res) => {
         .sort({ createdAt: -1 });
     } else {
       tickets = await Ticket.find({ createdBy: user._id })
-        .select("title description status createdAt")
+        .select("ticketId title description status createdAt")
         .sort({ createdAt: -1 });
     }
 
@@ -157,17 +176,14 @@ export const getTicket = async (req, res) => {
     }
 
     if (user.role !== "user") {
-      ticket = await Ticket.findById(req.params.id).populate("assignedTo", [
-        "email",
-        "_id",
-      ]);
+      ticket = await Ticket.findOne(ticketLookupForUser(req.params.id, user))
+        .populate("assignedTo", ["email", "_id"]);
     } else {
-      ticket = await Ticket.findOne({
-        createdBy: user._id,
-        _id: req.params.id,
-      }).select(
-        "title description status createdAt priority helpfulNotes relatedSkills assignedTo"
-      );
+      ticket = await Ticket.findOne(ticketLookupForUser(req.params.id, user))
+        .select(
+          "ticketId title description status createdAt priority helpfulNotes relatedSkills assignedTo"
+        )
+        .populate("assignedTo", ["email", "_id"]);
     }
 
     if (!ticket) {

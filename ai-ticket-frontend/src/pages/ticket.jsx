@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
+import { API_BASE_URL } from "../lib/api.js";
 
 export default function TicketDetailsPage() {
   const { id } = useParams();
@@ -15,7 +16,7 @@ export default function TicketDetailsPage() {
     const fetchTicket = async () => {
       try {
         const res = await fetch(
-          `${import.meta.env.VITE_SERVER_URL}/tickets/${id}`,
+          `${API_BASE_URL}/tickets/${id}`,
           {
             headers: {
               Authorization: `Bearer ${token}`,
@@ -56,7 +57,7 @@ export default function TicketDetailsPage() {
     return () => {
       shouldPoll = false;
     };
-  }, [id]);
+  }, [id, token]);
 
   const getStatusClassName = (status) => {
     if (status === "IN_PROGRESS") {

@@ -1,5 +1,6 @@
 import Ticket from "../models/ticket.js";
 import User from "../models/user.js";
+import mongoose from "mongoose";
 import analyzeTicket from "../utils/ai.js";
 import { sendMail } from "../utils/mailer.js";
 
@@ -8,8 +9,16 @@ const normalizePriority = (priority) =>
 
 const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+const findTicketById = (ticketId) => {
+  if (mongoose.Types.ObjectId.isValid(ticketId)) {
+    return Ticket.findOne({ $or: [{ _id: ticketId }, { ticketId }] });
+  }
+
+  return Ticket.findOne({ ticketId });
+};
+
 export const processTicket = async (ticketId) => {
-  const ticket = await Ticket.findById(ticketId);
+  const ticket = await findTicketById(ticketId);
   if (!ticket) {
     throw new Error(`Ticket not found: ${ticketId}`);
   }

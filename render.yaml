@@ -16,6 +16,8 @@ services:
         sync: false
       - key: GEMINI_API_KEY
         sync: false
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
       - key: INNGEST_EVENT_KEY
         sync: false
       - key: INNGEST_SIGNING_KEY
@@ -29,4 +31,8 @@ services:
       - key: MAILTRAP_SMTP_PASS
         sync: false
       - key: APP_URL
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: CORS_ORIGIN
         sync: false

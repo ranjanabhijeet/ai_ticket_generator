@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { API_BASE_URL } from "../lib/api.js";
 
 export default function Tickets() {
   const [form, setForm] = useState({ title: "", description: "" });
@@ -9,9 +10,9 @@ export default function Tickets() {
   const token = localStorage.getItem("token");
   const currentUser = JSON.parse(localStorage.getItem("user") || "null");
 
-  const fetchTickets = async () => {
+  const fetchTickets = useCallback(async () => {
     try {
-      const res = await fetch(`${import.meta.env.VITE_SERVER_URL}/tickets`, {
+      const res = await fetch(`${API_BASE_URL}/tickets`, {
         headers: { Authorization: `Bearer ${token}` },
         method: "GET",
       });
@@ -25,11 +26,11 @@ export default function Tickets() {
     } catch (err) {
       console.error("Failed to fetch tickets:", err);
     }
-  };
+  }, [token]);
 
   useEffect(() => {
     fetchTickets();
-  }, []);
+  }, [fetchTickets]);
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -39,7 +40,7 @@ export default function Tickets() {
     e.preventDefault();
     setLoading(true);
     try {
-      const res = await fetch(`${import.meta.env.VITE_SERVER_URL}/tickets`, {
+      const res = await fetch(`${API_BASE_URL}/tickets`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -141,7 +142,11 @@ export default function Tickets() {
           {tickets.map((ticket) => {
             const status = ticket.status || "TODO";
             return (
-              <Link key={ticket._id} className="ticket-card" to={`/tickets/${ticket._id}`}>
+              <Link
+                key={ticket.ticketId || ticket._id}
+                className="ticket-card"
+                to={`/tickets/${ticket.ticketId || ticket._id}`}
+              >
                 <div className="mb-2 flex items-start justify-between gap-3">
                   <h3 className="heading text-xl font-bold">{ticket.title}</h3>
                   <span className={getStatusClassName(status)}>{status.replace("_", " ")}</span>

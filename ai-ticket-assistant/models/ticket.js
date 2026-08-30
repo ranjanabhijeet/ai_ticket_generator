@@ -1,6 +1,14 @@
 import mongoose from "mongoose";
+import { randomUUID } from "crypto";
 
 const ticketSchema = new mongoose.Schema({
+  ticketId: {
+    type: String,
+    default: randomUUID,
+    unique: true,
+    sparse: true,
+    index: true,
+  },
   title: String,
   description: String,
   status: { type: String, default: "TODO" },

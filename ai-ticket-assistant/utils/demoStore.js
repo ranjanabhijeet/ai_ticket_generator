@@ -91,8 +91,10 @@ export const demoUsers = {
 
 export const demoTickets = {
   create({ title, description, createdBy }) {
+    const id = randomUUID();
     const ticket = {
-      _id: randomUUID(),
+      _id: id,
+      ticketId: id,
       title,
       description,
       status: "TODO",

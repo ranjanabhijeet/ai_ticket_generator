@@ -16,10 +16,15 @@ export const sendMail = async (to, subject, text) => {
     const user = pickEnv("MAILTRAP_SMTP_USER", "MAILTRAP-SMTP_USER");
     const pass = pickEnv("MAILTRAP_SMTP_PASS", "MAILTRAP-SMTP_PASS");
 
+    if (!host || !port || !user || !pass) {
+      console.warn("SMTP is not fully configured; skipping assignment email.");
+      return null;
+    }
+
     const transporter = nodemailer.createTransport({
       host,
       port,
-      secure: false, // true for 465, false for other ports
+      secure: port === 465,
       auth: {
         user,
         pass,
@@ -37,6 +42,6 @@ export const sendMail = async (to, subject, text) => {
     return info;
   } catch (error) {
     console.error("❌ Mail error", error.message);
-    throw error;
+    return null;
   }
 };
