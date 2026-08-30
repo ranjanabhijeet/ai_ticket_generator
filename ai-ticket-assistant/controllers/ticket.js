@@ -1,8 +1,13 @@
 import Ticket from "../models/ticket.js";
 import { processTicket } from "../services/processTicket.js";
+import analyzeTicket from "../utils/ai.js";
 import { demoTickets, isDemoStoreEnabled } from "../utils/demoStore.js";
 
 const FALLBACK_ANALYSIS_PREFIX = "AI response was unavailable";
+const STALE_DEMO_ANALYSIS_PREFIX =
+  "Demo mode is active because the production MongoDB connection is unavailable";
+const normalizePriority = (priority) =>
+  ["low", "medium", "high"].includes(priority) ? priority : "medium";
 
 const queueAnalysisIfPending = (ticket) => {
   const helpfulNotes = ticket?.helpfulNotes || "";
@@ -18,6 +23,51 @@ const queueAnalysisIfPending = (ticket) => {
   processTicket(ticket._id).catch((error) => {
     console.error("Ticket analysis failed:", error.message);
   });
+};
+
+const queueDemoAnalysisIfPending = (ticket) => {
+  const helpfulNotes = ticket?.helpfulNotes || "";
+  const hasStaleDemoAnalysis = helpfulNotes.startsWith(
+    STALE_DEMO_ANALYSIS_PREFIX
+  );
+
+  if (
+    !ticket ||
+    (ticket.status === "IN_PROGRESS" && !hasStaleDemoAnalysis) ||
+    (ticket.priority && helpfulNotes && !hasStaleDemoAnalysis)
+  ) {
+    return;
+  }
+
+  demoTickets.update(ticket._id, { status: "IN_PROGRESS" });
+
+  analyzeTicket(ticket)
+    .then((aiResponse) => {
+      const relatedSkills = Array.isArray(aiResponse?.relatedSkills)
+        ? aiResponse.relatedSkills.filter(Boolean)
+        : [];
+      const moderator = demoTickets.findModeratorForSkills(relatedSkills);
+
+      demoTickets.update(ticket._id, {
+        priority: normalizePriority(aiResponse?.priority),
+        helpfulNotes:
+          aiResponse?.helpfulNotes ||
+          "AI analysis completed, but no detailed notes were returned.",
+        status: "IN_PROGRESS",
+        relatedSkills,
+        assignedTo: moderator?._id || null,
+      });
+    })
+    .catch((error) => {
+      console.error("Demo ticket analysis failed:", error.message);
+      demoTickets.update(ticket._id, {
+        priority: "medium",
+        helpfulNotes:
+          "AI response was unavailable, so this ticket needs manual review. Check the backend logs and verify GEMINI_API_KEY is configured.",
+        status: "TODO",
+        relatedSkills: [],
+      });
+    });
 };
 
 export const createTicket = async (req, res) => {
@@ -37,8 +87,10 @@ export const createTicket = async (req, res) => {
         createdBy: req.user._id,
       });
 
+      queueDemoAnalysisIfPending(newTicket);
+
       return res.status(201).json({
-        message: "Ticket created in demo mode",
+        message: "Ticket created in demo mode and AI processing started",
         ticket: newTicket,
       });
     }
@@ -98,6 +150,8 @@ export const getTicket = async (req, res) => {
       if (!ticket) {
         return res.status(404).json({ message: "Ticket not found" });
       }
+
+      queueDemoAnalysisIfPending(ticket);
 
       return res.status(200).json({ ticket });
     }

@@ -30,6 +30,8 @@ const ticketWithAssignee = (ticket) => {
   return copy;
 };
 
+const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 export const enableDemoStore = (reason) => {
   state.enabled = true;
   state.reason = reason;
@@ -96,10 +98,9 @@ export const demoTickets = {
       status: "TODO",
       createdBy,
       assignedTo: null,
-      priority: "medium",
+      priority: null,
       deadline: null,
-      helpfulNotes:
-        "Demo mode is active because the production MongoDB connection is unavailable. Add a valid MongoDB URI on Render to enable persistent AI triage.",
+      helpfulNotes: "",
       relatedSkills: [],
       createdAt: new Date().toISOString(),
     };
@@ -120,11 +121,35 @@ export const demoTickets = {
       .map(ticketWithAssignee);
   },
 
+  update(id, updates) {
+    const ticket = state.tickets.find((item) => item._id === id);
+    if (!ticket) return null;
+
+    Object.assign(ticket, updates);
+    return ticketWithAssignee(ticket);
+  },
+
   findForUser(id, user) {
     const ticket = state.tickets.find((item) => item._id === id);
     if (!ticket) return null;
     if (user.role === "user" && ticket.createdBy !== user._id) return null;
 
     return ticketWithAssignee(ticket);
+  },
+
+  findModeratorForSkills(skills = []) {
+    const relatedSkills = Array.isArray(skills) ? skills.filter(Boolean) : [];
+    let moderator = null;
+
+    if (relatedSkills.length) {
+      const skillsPattern = new RegExp(relatedSkills.map(escapeRegex).join("|"), "i");
+      moderator = state.users.find(
+        (user) =>
+          user.role === "moderator" &&
+          user.skills?.some((skill) => skillsPattern.test(skill))
+      );
+    }
+
+    return toPublicUser(moderator || state.users.find((user) => user.role === "admin"));
   },
 };
