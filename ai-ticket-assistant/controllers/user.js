@@ -1,17 +1,45 @@
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
-import User from "../models/user.js";
+import User, { USER_ROLES } from "../models/user.js";
 import { inngest } from "../inngest/client.js";
 import { demoUsers, isDemoStoreEnabled } from "../utils/demoStore.js";
+import { normalizeSkillList } from "../utils/skills.js";
+
+const hasOwn = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
+
+const toSafeUser = (user) => {
+  const userObject = user?.toObject ? user.toObject() : { ...user };
+  delete userObject.password;
+  return userObject;
+};
+
+const requireAdmin = (req, res) => {
+  if (!req.user) {
+    res.status(401).json({ error: "Unauthorized" });
+    return false;
+  }
+
+  if (req.user.role !== "admin") {
+    res.status(403).json({ error: "Forbidden" });
+    return false;
+  }
+
+  return true;
+};
 
 export const signup = async (req, res) => {
   const { email, password, skills = [] } = req.body;
 
   try {
     const normalizedEmail = email?.trim().toLowerCase();
+    const normalizedSkills = normalizeSkillList(skills);
 
     if (!normalizedEmail || !password) {
       return res.status(400).json({ error: "Email and password are required" });
+    }
+
+    if (!normalizedSkills) {
+      return res.status(400).json({ error: "Skills must be an array of non-empty strings" });
     }
 
     if (isDemoStoreEnabled()) {
@@ -24,7 +52,7 @@ export const signup = async (req, res) => {
       const user = demoUsers.create({
         email: normalizedEmail,
         password: hashed,
-        skills,
+        skills: normalizedSkills,
         role: demoUsers.hasAdmin() ? "user" : "admin",
       });
 
@@ -49,12 +77,13 @@ export const signup = async (req, res) => {
     const user = await User.create({
       email: normalizedEmail,
       password: hashed,
-      skills,
+      skills: normalizedSkills,
       role: hasAdmin ? "user" : "admin",
     });
 
     try {
       await inngest.send({
+        id: `user-signup:${user._id}`,
         name: "user/signup",
         data: { email: user.email },
       });
@@ -67,12 +96,10 @@ export const signup = async (req, res) => {
       process.env.JWT_SECRET
     );
 
-    const safeUser = user.toObject();
-    delete safeUser.password;
-
-    res.json({ user: safeUser, token });
+    return res.json({ user: toSafeUser(user), token });
   } catch (error) {
-    res.status(500).json({ error: "Signup failed", details: error.message });
+    console.error("Signup failed", error.message);
+    return res.status(500).json({ error: "Signup failed" });
   }
 };
 
@@ -116,10 +143,7 @@ export const login = async (req, res) => {
       process.env.JWT_SECRET
     );
 
-    const safeUser = user.toObject();
-    delete safeUser.password;
-
-    res.json({ user: safeUser, token });
+    res.json({ user: toSafeUser(user), token });
   } catch (error) {
     res.status(500).json({ error: "Login failed", details: error.message });
   }
@@ -138,54 +162,83 @@ export const logout = async (req, res) => {
 };
 
 export const updateUser = async (req, res) => {
-  const { skills = [], role, email } = req.body;
+  const body = req.body || {};
+  const { email } = body;
+  const hasRole = hasOwn(body, "role");
+  const hasSkills = hasOwn(body, "skills");
 
   try {
-    if (req.user?.role !== "admin") {
-      return res.status(403).json({ error: "Forbidden" });
+    if (!requireAdmin(req, res)) {
+      return;
     }
 
+    if (
+      !email ||
+      typeof email !== "string" ||
+      !hasRole && !hasSkills ||
+      Object.keys(body).some((key) => !["email", "role", "skills"].includes(key))
+    ) {
+      return res.status(400).json({ error: "Invalid user update request" });
+    }
+
+    if (hasRole && !USER_ROLES.includes(body.role)) {
+      return res.status(400).json({ error: "Invalid user role" });
+    }
+
+    const normalizedSkills = hasSkills ? normalizeSkillList(body.skills) : null;
+    if (hasSkills && !normalizedSkills) {
+      return res.status(400).json({ error: "Skills must be an array of non-empty strings" });
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const updates = {
+      ...(hasRole ? { role: body.role } : {}),
+      ...(hasSkills ? { skills: normalizedSkills } : {}),
+    };
+
     if (isDemoStoreEnabled()) {
-      const normalizedEmail = email?.trim().toLowerCase();
-      const updatedUser = demoUsers.update(normalizedEmail, {
-        skills: skills.length ? skills : undefined,
-        role,
-      });
+      const updatedUser = demoUsers.update(normalizedEmail, updates);
 
       if (!updatedUser)
         return res.status(404).json({ error: "User not found" });
 
-      return res.json({ message: "User updated successfully" });
+      return res.json({
+        message: "User updated successfully",
+        user: toSafeUser(updatedUser),
+      });
     }
 
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ email: normalizedEmail });
     if (!user)
       return res.status(404).json({ error: "User not found" });
 
-    await User.updateOne(
-      { email },
-      { skills: skills.length ? skills : user.skills, role }
-    );
+    Object.assign(user, updates);
+    await user.save();
 
-    res.json({ message: "User updated successfully" });
+    return res.json({
+      message: "User updated successfully",
+      user: toSafeUser(user),
+    });
   } catch (error) {
-    res.status(500).json({ error: "Update failed", details: error.message });
+    console.error("User update failed", error.message);
+    return res.status(500).json({ error: "Update failed" });
   }
 };
 
 export const getUsers = async (req, res) => {
   try {
-    if (req.user.role !== "admin") {
-      return res.status(403).json({ error: "Forbidden" });
+    if (!requireAdmin(req, res)) {
+      return;
     }
 
     if (isDemoStoreEnabled()) {
-      return res.json(demoUsers.list());
+      return res.json(demoUsers.list().map(toSafeUser));
     }
 
     const users = await User.find().select("-password");
-    res.json(users);
+    return res.json(users.map(toSafeUser));
   } catch (error) {
-    res.status(500).json({ error: "Failed to fetch users" });
+    console.error("Failed to fetch users", error.message);
+    return res.status(500).json({ error: "Failed to fetch users" });
   }
 };

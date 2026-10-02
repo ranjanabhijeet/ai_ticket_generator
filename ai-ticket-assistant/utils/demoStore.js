@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto";
+import { selectAssignee } from "./assignment.js";
 
 const state = {
   enabled: false,
@@ -29,8 +30,6 @@ const ticketWithAssignee = (ticket) => {
   }
   return copy;
 };
-
-const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 export const enableDemoStore = (reason) => {
   state.enabled = true;
@@ -113,9 +112,11 @@ export const demoTickets = {
 
   listForUser(user) {
     const tickets =
-      user.role !== "user"
+      user.role === "admin"
         ? state.tickets
-        : state.tickets.filter((ticket) => ticket.createdBy === user._id);
+        : user.role === "moderator"
+          ? state.tickets.filter((ticket) => ticket.assignedTo === user._id)
+          : state.tickets.filter((ticket) => ticket.createdBy === user._id);
 
     return tickets
       .slice()
@@ -131,27 +132,29 @@ export const demoTickets = {
     return ticketWithAssignee(ticket);
   },
 
+  findById(id) {
+    const ticket = state.tickets.find(
+      (item) => item._id === id || item.ticketId === id
+    );
+
+    return ticket ? ticketWithAssignee(ticket) : null;
+  },
+
   findForUser(id, user) {
-    const ticket = state.tickets.find((item) => item._id === id);
+    const ticket = state.tickets.find(
+      (item) => item._id === id || item.ticketId === id
+    );
     if (!ticket) return null;
-    if (user.role === "user" && ticket.createdBy !== user._id) return null;
+    if (user.role === "moderator" && ticket.assignedTo !== user._id) return null;
+    if (user.role !== "admin" && user.role !== "moderator" && ticket.createdBy !== user._id) {
+      return null;
+    }
 
     return ticketWithAssignee(ticket);
   },
 
   findModeratorForSkills(skills = []) {
-    const relatedSkills = Array.isArray(skills) ? skills.filter(Boolean) : [];
-    let moderator = null;
-
-    if (relatedSkills.length) {
-      const skillsPattern = new RegExp(relatedSkills.map(escapeRegex).join("|"), "i");
-      moderator = state.users.find(
-        (user) =>
-          user.role === "moderator" &&
-          user.skills?.some((skill) => skillsPattern.test(skill))
-      );
-    }
-
-    return toPublicUser(moderator || state.users.find((user) => user.role === "admin"));
+    const { assignee } = selectAssignee(state.users, skills);
+    return toPublicUser(assignee);
   },
 };

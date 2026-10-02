@@ -3,10 +3,10 @@ import bcrypt from "bcrypt";
 import mongoose from "mongoose";
 import User from "../models/user.js";
 
-const MONGO_URI = process.env.MONGO_URI || process.env.MONGO_URL;
+const MONGO_URI = process.env.MONGO_URI;
 
 if (!MONGO_URI) {
-  throw new Error("Missing MONGO_URI/MONGO_URL in environment");
+  throw new Error("Missing MONGO_URI in environment");
 }
 
 const DEMO_PASSWORD = "12345678";

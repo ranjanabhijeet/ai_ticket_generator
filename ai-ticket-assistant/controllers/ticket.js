@@ -1,47 +1,46 @@
-import Ticket from "../models/ticket.js";
+import Ticket, { TICKET_STATUSES } from "../models/ticket.js";
 import mongoose from "mongoose";
-import { processTicket } from "../services/processTicket.js";
-import analyzeTicket from "../utils/ai.js";
+import { inngest } from "../inngest/client.js";
+import analyzeTicket, { validateTicketAnalysis } from "../utils/ai.js";
 import { demoTickets, isDemoStoreEnabled } from "../utils/demoStore.js";
 
-const FALLBACK_ANALYSIS_PREFIX = "AI response was unavailable";
 const STALE_DEMO_ANALYSIS_PREFIX =
   "Demo mode is active because the production MongoDB connection is unavailable";
-const normalizePriority = (priority) =>
-  ["low", "medium", "high"].includes(priority) ? priority : "medium";
 
-const ticketLookupForUser = (id, user) => {
+const ticketLookup = (id) => {
   const publicIdLookup = { ticketId: id };
 
   if (mongoose.Types.ObjectId.isValid(id)) {
     const objectIdLookup = { _id: id };
-    return user.role !== "user"
-      ? { $or: [objectIdLookup, publicIdLookup] }
-      : {
-          createdBy: user._id,
-          $or: [objectIdLookup, publicIdLookup],
-        };
+    return { $or: [objectIdLookup, publicIdLookup] };
   }
 
-  return user.role !== "user"
-    ? publicIdLookup
-    : { createdBy: user._id, ...publicIdLookup };
+  return publicIdLookup;
 };
 
-const queueAnalysisIfPending = (ticket) => {
-  const helpfulNotes = ticket?.helpfulNotes || "";
-  const hasRealAnalysis =
-    ticket?.priority &&
-    helpfulNotes &&
-    !helpfulNotes.startsWith(FALLBACK_ANALYSIS_PREFIX);
+const ticketAccessFilter = (user) => {
+  if (user.role === "admin") return {};
+  if (user.role === "moderator") return { assignedTo: user._id };
+  return { createdBy: user._id };
+};
 
-  if (!ticket || hasRealAnalysis) {
-    return;
-  }
+const ticketLookupForUser = (id, user) => ({
+  ...ticketLookup(id),
+  ...ticketAccessFilter(user),
+});
 
-  processTicket(ticket._id).catch((error) => {
-    console.error("Ticket analysis failed:", error.message);
-  });
+const ticketListFields =
+  "ticketId title description status createdAt priority relatedSkills assignedTo";
+
+const NEXT_STATUSES = {
+  TODO: ["IN_PROGRESS"],
+  IN_PROGRESS: ["DONE"],
+  DONE: [],
+};
+
+const referenceId = (reference) => {
+  if (!reference) return null;
+  return String(reference._id || reference);
 };
 
 const queueDemoAnalysisIfPending = (ticket) => {
@@ -62,16 +61,12 @@ const queueDemoAnalysisIfPending = (ticket) => {
 
   analyzeTicket(ticket)
     .then((aiResponse) => {
-      const relatedSkills = Array.isArray(aiResponse?.relatedSkills)
-        ? aiResponse.relatedSkills.filter(Boolean)
-        : [];
+      const { priority, helpfulNotes, relatedSkills } = validateTicketAnalysis(aiResponse);
       const moderator = demoTickets.findModeratorForSkills(relatedSkills);
 
       demoTickets.update(ticket._id, {
-        priority: normalizePriority(aiResponse?.priority),
-        helpfulNotes:
-          aiResponse?.helpfulNotes ||
-          "AI analysis completed, but no detailed notes were returned.",
+        priority,
+        helpfulNotes,
         status: "IN_PROGRESS",
         relatedSkills,
         assignedTo: moderator?._id || null,
@@ -120,7 +115,18 @@ export const createTicket = async (req, res) => {
       createdBy: req.user._id,
     });
 
-    queueAnalysisIfPending(newTicket);
+    try {
+      await inngest.send({
+        name: "ticket/created",
+        data: { ticketId: newTicket.ticketId },
+      });
+    } catch (eventError) {
+      console.error("Failed to publish ticket-created event:", eventError.message);
+      return res.status(202).json({
+        message: "Ticket created, but background processing could not be queued",
+        ticket: newTicket,
+      });
+    }
 
     return res.status(201).json({
       message: "Ticket created and processing started",
@@ -133,23 +139,21 @@ export const createTicket = async (req, res) => {
 };
 
 export const getTickets = async (req, res) => {
+  if (!req.user) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+
   try {
     const user = req.user;
-    let tickets;
 
     if (isDemoStoreEnabled()) {
       return res.status(200).json(demoTickets.listForUser(user));
     }
 
-    if (user.role !== "user") {
-      tickets = await Ticket.find({})
-        .populate("assignedTo", ["email", "_id"])
-        .sort({ createdAt: -1 });
-    } else {
-      tickets = await Ticket.find({ createdBy: user._id })
-        .select("ticketId title description status createdAt")
-        .sort({ createdAt: -1 });
-    }
+    const tickets = await Ticket.find(ticketAccessFilter(user))
+      .select(ticketListFields)
+      .populate("assignedTo", ["email", "_id"])
+      .sort({ createdAt: -1 });
 
     return res.status(200).json(tickets);
   } catch (error) {
@@ -159,6 +163,10 @@ export const getTickets = async (req, res) => {
 };
 
 export const getTicket = async (req, res) => {
+  if (!req.user) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+
   try {
     const user = req.user;
     let ticket;
@@ -175,14 +183,14 @@ export const getTicket = async (req, res) => {
       return res.status(200).json({ ticket });
     }
 
-    if (user.role !== "user") {
-      ticket = await Ticket.findOne(ticketLookupForUser(req.params.id, user))
-        .populate("assignedTo", ["email", "_id"]);
-    } else {
+    if (user.role === "user") {
       ticket = await Ticket.findOne(ticketLookupForUser(req.params.id, user))
         .select(
           "ticketId title description status createdAt priority helpfulNotes relatedSkills assignedTo"
         )
+        .populate("assignedTo", ["email", "_id"]);
+    } else {
+      ticket = await Ticket.findOne(ticketLookupForUser(req.params.id, user))
         .populate("assignedTo", ["email", "_id"]);
     }
 
@@ -190,11 +198,66 @@ export const getTicket = async (req, res) => {
       return res.status(404).json({ message: "Ticket not found" });
     }
 
-    queueAnalysisIfPending(ticket);
-
     return res.status(200).json({ ticket });
   } catch (error) {
     console.error("Error fetching ticket", error.message);
     return res.status(500).json({ message: "Internal Server Error" });
+  }
+};
+
+export const updateTicket = async (req, res) => {
+  const { status } = req.body || {};
+
+  if (!req.user) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+
+  if (!TICKET_STATUSES.includes(status)) {
+    return res.status(400).json({ error: "Invalid ticket status" });
+  }
+
+  try {
+    const ticket = isDemoStoreEnabled()
+      ? demoTickets.findById(req.params.id)
+      : await Ticket.findOne(ticketLookup(req.params.id));
+
+    if (!ticket) {
+      return res.status(404).json({ error: "Ticket not found" });
+    }
+
+    const isAdmin = req.user.role === "admin";
+    const isAssignedModerator =
+      req.user.role === "moderator" &&
+      referenceId(ticket.assignedTo) === String(req.user._id);
+
+    if (!isAdmin && !isAssignedModerator) {
+      return res.status(403).json({ error: "Not authorized to update this ticket" });
+    }
+
+    if (!NEXT_STATUSES[ticket.status]?.includes(status)) {
+      return res.status(400).json({
+        error: `Invalid status transition from ${ticket.status} to ${status}`,
+      });
+    }
+
+    const updatedTicket = isDemoStoreEnabled()
+      ? demoTickets.update(ticket._id, { status })
+      : await Ticket.findByIdAndUpdate(
+          ticket._id,
+          { status },
+          { new: true, runValidators: true }
+        );
+
+    if (!updatedTicket) {
+      return res.status(404).json({ error: "Ticket not found" });
+    }
+
+    return res.json({
+      message: "Ticket status updated",
+      ticket: updatedTicket,
+    });
+  } catch (error) {
+    console.error("Error updating ticket", error.message);
+    return res.status(500).json({ error: "Unable to update ticket" });
   }
 };

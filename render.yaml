@@ -6,7 +6,7 @@ services:
     rootDir: ai-ticket-assistant
     buildCommand: npm install
     startCommand: npm start
-    healthCheckPath: /
+    healthCheckPath: /health
     envVars:
       - key: NODE_ENV
         value: production
@@ -29,8 +29,6 @@ services:
       - key: MAILTRAP_SMTP_USER
         sync: false
       - key: MAILTRAP_SMTP_PASS
-        sync: false
-      - key: APP_URL
         sync: false
       - key: FRONTEND_URL
         sync: false

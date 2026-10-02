@@ -7,7 +7,13 @@
   "scripts": {
     "start": "node index.js",
     "dev": "INNGEST_DEV=1 nodemon --config nodemon.json index.js",
-    "inngest-dev": "npx inngest-cli@latest dev -u http://localhost:3000/api/inngest",
+    "inngest-dev": "npx inngest-cli@latest dev -u http://localhost:10000/api/inngest",
+    "test:assignment": "node --test tests/assignment.test.js",
+    "test:tickets": "node --test tests/ticket-lifecycle.test.js",
+    "test:users": "node --test tests/user-management.test.js",
+    "test:email": "node --test tests/email-workflows.test.js",
+    "test:ai": "node --test tests/ai-analysis.test.js",
+    "test:integration": "node --test tests/integration-workflow.test.js",
     "seed:demo": "node scripts/seed-demo-users.js"
   },
   "keywords": [],
