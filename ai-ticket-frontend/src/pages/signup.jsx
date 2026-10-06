@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { API_BASE_URL } from "../lib/api.js";
 
 export default function SignupPage() {
   const [form, setForm] = useState({ email: "", password: "" });
@@ -15,7 +16,7 @@ export default function SignupPage() {
     setLoading(true);
     try {
       const res = await fetch(
-        `${import.meta.env.VITE_SERVER_URL}/auth/signup`,
+        `${API_BASE_URL}/auth/signup`,
         {
           method: "POST",
           headers: {

@@ -1,14 +1,18 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { API_BASE_URL } from "../lib/api.js";
 
 export default function AdminPanel() {
   const [users, setUsers] = useState([]);
   const [filteredUsers, setFilteredUsers] = useState([]);
   const [editingUser, setEditingUser] = useState(null);
-  const [formData, setFormData] = useState({ role: "", skills: "" });
+  const [formData, setFormData] = useState({ role: "", skills: [] });
+  const [skillInput, setSkillInput] = useState("");
+  const [saving, setSaving] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
   const token = localStorage.getItem("token");
   const currentUser = JSON.parse(localStorage.getItem("user") || "null");
+  const currentUserRole = currentUser?.role;
 
   const getRoleClassName = (role) => {
     if (role === "admin") {
@@ -20,7 +24,34 @@ export default function AdminPanel() {
     return "status-pill status-todo";
   };
 
-  if (!currentUser || currentUser.role !== "admin") {
+  const fetchUsers = useCallback(async () => {
+    if (currentUserRole !== "admin") {
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/auth/users`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setUsers(data);
+        setFilteredUsers(data);
+      } else {
+        console.error(data.error);
+      }
+    } catch (err) {
+      console.error("Error fetching users", err);
+    }
+  }, [currentUserRole, token]);
+
+  useEffect(() => {
+    fetchUsers();
+  }, [fetchUsers]);
+
+  if (currentUserRole !== "admin") {
     return (
       <main className="container-app py-8">
         <div className="glass page-enter p-8">
@@ -36,41 +67,55 @@ export default function AdminPanel() {
     );
   }
 
-  useEffect(() => {
-    fetchUsers();
-  }, []);
-
-  const fetchUsers = async () => {
-    try {
-      const res = await fetch(`${import.meta.env.VITE_SERVER_URL}/auth/users`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setUsers(data);
-        setFilteredUsers(data);
-      } else {
-        console.error(data.error);
-      }
-    } catch (err) {
-      console.error("Error fetching users", err);
-    }
-  };
-
   const handleEditClick = (user) => {
     setEditingUser(user.email);
     setFormData({
       role: user.role,
-      skills: user.skills?.join(", "),
+      skills: user.skills || [],
+    });
+    setSkillInput("");
+  };
+
+  const normalizeSkill = (skill) => skill.trim().replace(/\s+/g, " ");
+
+  const addSkills = () => {
+    const additions = skillInput
+      .split(",")
+      .map(normalizeSkill)
+      .filter(Boolean);
+
+    if (!additions.length) {
+      return;
+    }
+
+    const seenSkills = new Set(formData.skills.map((skill) => skill.toLowerCase()));
+    const uniqueAdditions = additions.filter((skill) => {
+      const key = skill.toLowerCase();
+      if (seenSkills.has(key)) {
+        return false;
+      }
+
+      seenSkills.add(key);
+      return true;
+    });
+
+    setFormData({ ...formData, skills: [...formData.skills, ...uniqueAdditions] });
+    setSkillInput("");
+  };
+
+  const removeSkill = (skillToRemove) => {
+    setFormData({
+      ...formData,
+      skills: formData.skills.filter((skill) => skill !== skillToRemove),
     });
   };
 
   const handleUpdate = async () => {
+    setSaving(true);
+
     try {
       const res = await fetch(
-        `${import.meta.env.VITE_SERVER_URL}/auth/update-user`,
+        `${API_BASE_URL}/auth/update-user`,
         {
           method: "POST",
           headers: {
@@ -80,10 +125,7 @@ export default function AdminPanel() {
           body: JSON.stringify({
             email: editingUser,
             role: formData.role,
-            skills: formData.skills
-              .split(",")
-              .map((skill) => skill.trim())
-              .filter(Boolean),
+            skills: formData.skills,
           }),
         }
       );
@@ -95,10 +137,13 @@ export default function AdminPanel() {
       }
 
       setEditingUser(null);
-      setFormData({ role: "", skills: "" });
+      setFormData({ role: "", skills: [] });
+      setSkillInput("");
       fetchUsers();
     } catch (err) {
       console.error("Update failed", err);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -145,35 +190,77 @@ export default function AdminPanel() {
 
             {editingUser === user.email ? (
               <div className="space-y-3">
-                <select
-                  className="app-input"
-                  value={formData.role}
-                  onChange={(e) =>
-                    setFormData({ ...formData, role: e.target.value })
-                  }
-                >
-                  <option value="user">User</option>
-                  <option value="moderator">Moderator</option>
-                  <option value="admin">Admin</option>
-                </select>
+                <label className="block text-sm font-medium text-slate-200">
+                  Role
+                  <select
+                    className="app-input mt-1"
+                    value={formData.role}
+                    onChange={(e) =>
+                      setFormData({ ...formData, role: e.target.value })
+                    }
+                  >
+                    <option value="user">User</option>
+                    <option value="moderator">Moderator</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                </label>
 
-                <input
-                  type="text"
-                  placeholder="Comma-separated skills"
-                  className="app-input"
-                  value={formData.skills}
-                  onChange={(e) =>
-                    setFormData({ ...formData, skills: e.target.value })
-                  }
-                />
+                <div>
+                  <p className="mb-2 text-sm font-medium text-slate-200">Skills</p>
+                  {formData.skills.length ? (
+                    <div className="mb-3 flex flex-wrap gap-2">
+                      {formData.skills.map((skill) => (
+                        <span key={skill} className="role-pill flex items-center gap-2">
+                          {skill}
+                          <button
+                            type="button"
+                            className="text-xs font-semibold text-cyan-100 hover:text-white"
+                            onClick={() => removeSkill(skill)}
+                          >
+                            Remove
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mb-3 text-sm text-slate-400">No skills assigned.</p>
+                  )}
+
+                  <div className="flex flex-wrap gap-2">
+                    <input
+                      type="text"
+                      placeholder="Add skill, or comma-separated skills"
+                      className="app-input min-w-0 flex-1"
+                      value={skillInput}
+                      onChange={(e) => setSkillInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          addSkills();
+                        }
+                      }}
+                    />
+                    <button type="button" className="btn-muted px-4 py-2" onClick={addSkills}>
+                      Add Skill
+                    </button>
+                  </div>
+                </div>
 
                 <div className="flex gap-2">
-                  <button className="btn-accent px-4 py-2" onClick={handleUpdate}>
-                    Save
+                  <button
+                    className="btn-accent px-4 py-2"
+                    onClick={handleUpdate}
+                    disabled={saving}
+                  >
+                    {saving ? "Saving..." : "Save"}
                   </button>
                   <button
                     className="btn-muted px-4 py-2"
-                    onClick={() => setEditingUser(null)}
+                    onClick={() => {
+                      setEditingUser(null);
+                      setSkillInput("");
+                    }}
+                    disabled={saving}
                   >
                     Cancel
                   </button>
