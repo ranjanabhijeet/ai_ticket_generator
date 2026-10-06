@@ -3,9 +3,11 @@ import { Link, useNavigate } from "react-router-dom";
 export default function Navbar() {
   const token = localStorage.getItem("token");
   let user = localStorage.getItem("user");
+
   if (user) {
     user = JSON.parse(user);
   }
+
   const navigate = useNavigate();
 
   const logout = () => {
@@ -37,12 +39,26 @@ export default function Navbar() {
               <p className="hidden text-slate-300 sm:inline">
                 Hi, <span className="font-semibold text-slate-100">{user?.email}</span>
               </p>
+
               {user?.role ? <span className="role-pill">{user.role}</span> : null}
-              {user?.role === "admin" ? (
-                <Link to="/admin" className="btn-muted px-3 py-2">
-                  Admin
+
+              {user?.role === "moderator" ? (
+                <Link to="/" className="btn-muted px-3 py-2">
+                  My Work
                 </Link>
               ) : null}
+
+              {user?.role === "admin" ? (
+                <>
+                  <Link to="/" className="btn-muted px-3 py-2">
+                    Tickets
+                  </Link>
+                  <Link to="/admin" className="btn-muted px-3 py-2">
+                    Admin
+                  </Link>
+                </>
+              ) : null}
+
               <button onClick={logout} className="btn-muted px-3 py-2">
                 Logout
               </button>
