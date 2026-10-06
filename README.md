@@ -21,31 +21,56 @@ When a ticket is created, Gemini analyzes the ticket and generates:
 - Helpful notes for the moderator
 - Ticket classification metadata
 
+The AI response is validated against a strict contract before assignment. Invalid or incomplete production AI responses are rejected rather than replaced with fake output.
+
 ### Intelligent Moderator Assignment
-Tickets are assigned based on skill matching rather than random assignment.
+Tickets are assigned based on skill matching rather than random or round-robin assignment.
+
+The system normalizes skills, scores moderators by the number of matching required skills, and uses a deterministic tie-breaker. When no moderator matches, an admin fallback is used.
 
 For example:
 
-- Python + Machine Learning ticket → Python/ML moderator
-- React + JavaScript ticket → React/JavaScript moderator
+- Python + Machine Learning ticket → moderator with Python/ML skills
+- React + JavaScript ticket → moderator with React/JavaScript skills
 - No suitable moderator → deterministic admin fallback
 
 ### Event-Driven Background Processing
-The application uses Inngest to handle background workflows so users receive an immediate response while AI processing and emails run asynchronously.
+The application uses Inngest to handle background workflows so users receive an immediate HTTP response while AI processing and emails run asynchronously.
 
 Main workflows include:
 
-- User signup → confirmation email
-- Ticket creation → AI analysis → moderator assignment
-- Ticket assignment → assignment email
+- User signup → background confirmation email
+- Ticket creation → background AI analysis
+- AI analysis → skill-based moderator assignment
+- Ticket assignment → background assignment email
+- AI or SMTP failures → retried independently without blocking the original request
 
 ### Role-Based Access Control
 
 The application supports three roles:
 
 - **User** — Create and view their own tickets
-- **Moderator** — View assigned tickets and update their lifecycle
-- **Admin** — Manage users, skills, roles, and all tickets
+- **Moderator** — View only tickets assigned to them and update their lifecycle
+- **Admin** — Create tickets, view all tickets, manage users, roles, skills, and ticket lifecycle
+
+### Admin User & Skill Management
+Admins have a dedicated **Manage Users** panel where they can:
+
+- View registered users and their current roles
+- Change a user's role between User, Moderator, and Admin
+- Add or remove moderator skills
+- Save role and skill changes securely
+- Search users by email
+
+These skills directly affect the AI routing workflow, allowing the admin to configure which moderator should receive different types of tickets.
+
+### Role-Specific Workspaces
+
+The frontend changes based on the authenticated role:
+
+- **User workspace** → Create Ticket + My Tickets
+- **Moderator workspace** → My Assigned Work + ticket lifecycle controls
+- **Admin workspace** → Create Ticket + All Tickets + Admin user management
 
 ### Ticket Lifecycle
 
