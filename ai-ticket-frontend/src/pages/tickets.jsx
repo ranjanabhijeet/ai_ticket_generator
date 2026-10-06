@@ -16,6 +16,7 @@ export default function Tickets() {
   const isUser = role === "user";
   const isModerator = role === "moderator";
   const isAdmin = role === "admin";
+  const canCreateTicket = isUser || isAdmin;
 
   const ticketListTitle = isModerator
     ? "My Assigned Work"
@@ -121,7 +122,7 @@ export default function Tickets() {
 
   return (
     <main className="container-app page-enter py-8">
-      {isUser ? (
+      {canCreateTicket ? (
         <section className="grid gap-5 lg:grid-cols-[1.2fr_0.8fr]">
           <form onSubmit={handleSubmit} className="glass space-y-4 p-5">
             <div>
