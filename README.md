@@ -135,6 +135,20 @@ Moderator works on ticket
 Ticket → DONE
 ```
 
+## 🖼️ Screenshots
+
+### Login & User Workspace
+
+![Login and user ticket workspace](./docs/screenshots/auth-and-user.jpg)
+
+### Admin Ticket Operations
+
+![Admin ticket operations](./docs/screenshots/admin-tickets.jpg)
+
+### Admin User Management
+
+![Admin user management and skill editing](./docs/screenshots/admin-users.jpg)
+
 ## 🛠️ Tech Stack
 
 ### Frontend
