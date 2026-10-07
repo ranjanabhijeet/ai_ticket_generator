@@ -137,17 +137,9 @@ Ticket → DONE
 
 ## 🖼️ Screenshots
 
-### Login & User Workspace
+The deployed application UI across login, user ticket workspace, admin ticket operations, and admin user/skill management:
 
-![Login and user ticket workspace](./docs/screenshots/auth-and-user.jpg)
-
-### Admin Ticket Operations
-
-![Admin ticket operations](./docs/screenshots/admin-tickets.jpg)
-
-### Admin User Management
-
-![Admin user management and skill editing](./docs/screenshots/admin-users.jpg)
+![AI Ticket Assistant application screenshots](./docs/screenshots/app-screenshots.jpg)
 
 ## 🛠️ Tech Stack
 
